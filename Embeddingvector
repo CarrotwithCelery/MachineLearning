@@ -1,0 +1,50 @@
+import pandas as pd
+from gensim.models import Word2Vec
+from elasticsearch import Elasticsearch
+from elasticsearch.helpers import bulk
+
+# Step 1: Load the CSV file into a DataFrame
+df = pd.read_csv('recipes.csv')
+
+# Step 2: Data Preprocessing (customize this based on your data)
+# For example, removing duplicates
+df.drop_duplicates(subset=['recipe_description'], inplace=True)
+df.reset_index(drop=True, inplace=True)
+
+# Step 3: Text Embedding (Word2Vec)
+sentences = [recipe.split() for recipe in df['recipe_description']]
+model = Word2Vec(sentences, vector_size=100, window=5, min_count=1, sg=0)
+
+# Step 4: Storing in Elasticsearch
+es = Elasticsearch()
+
+# Define an index (you can customize this)
+index_name = 'recipes'
+
+# Create the index with a "dense_vector" field
+index_mapping = {
+    "mappings": {
+        "properties": {
+            "vector": {
+                "type": "dense_vector",
+                "dims": 100  # Should match the vector size of your Word2Vec model
+            }
+        }
+    }
+}
+
+es.indices.create(index=index_name, body=index_mapping, ignore=400)  # Ignore if index already exists
+
+# Function to generate documents for bulk indexing
+def doc_generator():
+    for index, row in df.iterrows():
+        yield {
+            "_index": index_name,
+            "_id": row['recipe_id'],  # Assuming you have a column for recipe IDs
+            "vector": model.wv[row['recipe_description']].tolist()
+        }
+
+# Bulk index documents
+bulk(es, doc_generator())
+
+print("Vector data has been indexed in Elasticsearch.")
