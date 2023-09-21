@@ -8,11 +8,13 @@ df = pd.read_csv('recipes.csv')
 
 # Step 2: Data Preprocessing (customize this based on your data)
 # For example, removing duplicates
-df.drop_duplicates(subset=['recipe_description'], inplace=True)
+df.drop_duplicates(subset=['title'], inplace=True)
 df.reset_index(drop=True, inplace=True)
 
 # Step 3: Text Embedding (Word2Vec)
-sentences = [recipe.split() for recipe in df['recipe_description']]
+# Combine ingredients and instructions into one text for embedding
+df['text'] = df['ingredients'] + ' ' + df['instructions']
+sentences = [text.split() for text in df['text']]
 model = Word2Vec(sentences, vector_size=100, window=5, min_count=1, sg=0)
 
 # Step 4: Storing in Elasticsearch
@@ -40,8 +42,9 @@ def doc_generator():
     for index, row in df.iterrows():
         yield {
             "_index": index_name,
-            "_id": row['recipe_id'],  # Assuming you have a column for recipe IDs
-            "vector": model.wv[row['recipe_description']].tolist()
+            "_id": index,  # Use the DataFrame index as the ID
+            "title": row['title'],
+            "vector": model.wv[row['text']].tolist()
         }
 
 # Bulk index documents
